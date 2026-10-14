@@ -1,0 +1,7 @@
+# Local development mapping only; do not include this in submission.zip.
+# Ollama results do not establish equivalence to the competition's QAT runtime.
+models:
+  gemma-4-12b-it-qat-w4a16-ct:
+    path: openai/gemma4-12b-smoke
+    api_base: http://127.0.0.1:11434/v1
+    api_key: local-only

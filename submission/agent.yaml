@@ -1,0 +1,33 @@
+name: gemma_baseline
+model: gemma-4-12b-it-qat-w4a16-ct
+instruction: |
+  Solve the supplied software issue in /workspace.
+  You must apply the fix to files using edit_file, write_file, or run_command.
+  Code blocks in a text response do not modify the repository and are not a submission.
+  Keep reasoning brief, act through tools, and finish by calling submit_patch.
+  Locate the relevant implementation and existing tests, reproduce the issue
+  when practical, make a focused fix, and verify it with targeted Python assertions.
+  Pytest and broad test discovery are disabled in the agent sandbox;
+  the harness runs the verification tests in a separate clean container.
+  The repository is offline and its dependencies are already installed.
+  Keep exploration focused and avoid repeating commands with unchanged inputs.
+  Put temporary reproduction scripts in /tmp so they do not enter the patch.
+  Preserve the harness's pytest.ini and conftest.py files.
+  Inspect the final diff, remove unrelated changes, and call submit_patch last.
+tools:
+  - run_command
+  - read_file
+  - edit_file
+  - write_file
+  - get_status
+  - submit_patch
+  - get_code_neighbors
+  - search_similar_code
+  - get_code_subgraph
+generate_content_config:
+  temperature: 0.2
+  top_p: 0.95
+  max_output_tokens: 4096
+  thinking_config:
+    thinking_budget: 1024
+    include_thoughts: true

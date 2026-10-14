@@ -1,0 +1,7 @@
+# Local Apple Silicon development runtime; exclude from submission.zip.
+# MLX QAT conversion served by vLLM-Metal, not the Kaggle CUDA/CT runtime.
+models:
+  gemma-4-12b-it-qat-w4a16-ct:
+    path: openai/gemma4-12b-local
+    api_base: http://127.0.0.1:8000/v1
+    api_key: local-only

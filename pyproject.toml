@@ -1,0 +1,22 @@
+[project]
+name = "gemma-developer-agent"
+version = "0.1.0"
+description = "Development environment for the Gemma 4 Developer Agent competition"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "adk-eval-core",
+    "adk-submission",
+    "google-adk",
+    "kaggle>=2.2.4",
+    "kagglehub>=1.0.2",
+    "swegemma",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+adk-eval-core = { path = "downloads/harness/adk_eval_core-0.1.0-py3-none-any.whl" }
+adk-submission = { path = "downloads/harness/adk_submission-0.2.13-py3-none-any.whl" }
+swegemma = { path = "downloads/harness/swegemma-0.2.11-py3-none-any.whl" }
+google-adk = { path = "downloads/harness/google_adk-1.36.1-py3-none-any.whl" }

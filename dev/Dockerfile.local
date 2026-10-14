@@ -1,0 +1,6 @@
+# Local development overlay on the unmodified official sandbox Dockerfile.
+# The harness unpacks dependency wheels into site-packages after installing
+# the editable repository. Prioritize repository sources so an injected wheel
+# for the same project cannot hide the code being edited and verified.
+FROM localhost/gemma-swebench-sandbox:2026-10-14
+ENV PYTHONPATH=/workspace/src:/workspace

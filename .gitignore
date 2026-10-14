@@ -1,0 +1,50 @@
+# Environments, caches and local application state
+.venv*/
+venv/
+.cache/
+__pycache__/
+*.py[cod]
+.DS_Store
+.idea/
+.vscode/
+.codex/
+.agents/
+
+# Credentials and machine-local configuration
+.env
+.env.*
+!.env.example
+kaggle.json
+access_token
+auth.json
+auths/
+credentials*.json
+*.pem
+*.key
+*.local.yaml
+*.local.yml
+
+# Downloaded competition data, software, model weights and generated runs
+data/
+downloads/
+models/
+results/
+artifacts/
+logs/
+*.log
+*.whl
+*.safetensors
+*.gguf
+*.pt
+*.pth
+*.zip
+*.tgz
+*.tar.gz
+*.patch
+*.diff
+submission.zip
+
+# Downloaded rules snapshot and abandoned bounded Kaggle smoke experiment
+/competition_rules.md
+/dev/kaggle-vllm/
+/scripts/prepare_kaggle_vllm.py

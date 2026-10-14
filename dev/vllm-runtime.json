@@ -1,0 +1,34 @@
+{
+  "packages": {
+    "vllm": "0.31.0+cpu",
+    "vllm-metal": "0.31.0",
+    "mlx": "0.32.1",
+    "mlx-metal": "0.32.1",
+    "mlx-lm": "0.32.0",
+    "mlx-vlm": "0.6.17",
+    "transformers": "5.17.0",
+    "torch": "2.13.0"
+  },
+  "python": "3.12.4",
+  "model": "mlx-community/gemma-4-12B-it-qat-4bit",
+  "revision": "e70c6b3ba0979b3357dcd2f223ad8bde7787a6b6",
+  "endpoint": "http://127.0.0.1:8000/v1",
+  "context_length": 32768,
+  "gpu_memory_utilization": 0.35,
+  "max_num_seqs": 1,
+  "max_num_batched_tokens": 2048,
+  "tool_call_parser": "gemma4",
+  "reasoning_parser": "gemma4",
+  "thinking_token_budget_enforced": false,
+  "preflight_report": "results/vllm-preflight.json",
+  "thinking_budget_investigation": "results/vllm-budget-investigation.json",
+  "local_run_policy": {
+    "thinking_enabled": true,
+    "max_completion_tokens": 4096,
+    "separate_thinking_budget_enforced": false,
+    "upstream_runtime_modified": false,
+    "user_choice": "Keep upstream unchanged and run with thinking enabled, using only the 4,096-token total response limit.",
+    "summary_output_limit": "server-wide max_new_tokens=4096"
+  },
+  "server_max_output_tokens": 4096
+}
