@@ -5,3 +5,6 @@ models:
     path: openai/gemma4-12b-local
     api_base: http://127.0.0.1:8000/v1
     api_key: local-only
+    # Local runner extension; not a competition models.yaml field.
+    # A full-window request delegates output sizing to the server's tokenizer.
+    use_remaining_context_budget: true

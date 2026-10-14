@@ -34,7 +34,9 @@ fresh conversation; prior interactive chat history is not included.
   these benchmark requests. The vLLM server's context is checked when exposed.
 - Temperature 1, top-p 0.95, top-k 64, seed 42 on both engines. Quantization and
   backend differences mean identical seeds do not guarantee identical answers.
-- Maximum 1,024 generated tokens per request (`--max-tokens`, up to 4,096).
+- Maximum 1,024 generated tokens per request by default (`--max-tokens`). This is
+  a speed-test setting, not the agent's task budget. The arbitrary 4,096-token
+  argument restriction has been removed; input plus output must fit the context.
   A `length` finish reason means the benchmark output ceiling was reached.
 - Repeated requests can reuse prefix caches. Inspect the first run separately
   when comparing first-token latency with later runs. No cache is forcibly reset.
@@ -59,6 +61,12 @@ provided in chat. It is a reference, not a replay of its 901-token conversation.
 Compare the two fresh runs for the controlled prompt comparison.
 
 ## Interpretation
+
+The configuration audit changed the launcher: the old global 4,096-token cap and
+custom memory/batch/concurrency overrides were removed. Historical measurements
+retain their original settings and are not measurements of the revised launcher.
+Server readiness now allows the organizer notebook's 1,200 seconds, configurable
+with `--startup-timeout`; startup remains excluded from generation timing.
 
 This compares the installed local setups. Ollama 0.40.4 reports an MLX runner
 with NVFP4 weights; the vLLM-Metal checkpoint is a different MLX affine

@@ -1,8 +1,18 @@
 # Stronger-model experiment
 
-Status: proposed, awaiting decisions on the proxy, exact teacher model and
-observability backend. No teacher run, fine-tuning job or new Kaggle GPU run has
-been started. Notes reflect the project state on 2026-10-14.
+Status: CLIProxyAPI selected for the first trial. Release 8.0.29 is installed and
+authenticated; five synthetic ADK/LiteLLM checks with GPT-6.1 Sol passed, and an
+output-limit probe confirmed that this route does not enforce the requested
+ceiling. The task model, budget policy and observability backend remain open.
+No teacher task, fine-tuning job or new Kaggle GPU run has been started. Notes
+reflect the project state on 2026-10-14; see [proxy trial](dev/cliproxyapi.md).
+
+The subsequent [configuration audit](dev/challenge-configuration-audit.md) removed
+our artificial Gemma output cap, restored sandbox tests and selected maximum
+permitted generation budgets. Input plus generation still shares a 32,768-token
+context. The old interrupted runs used different settings; they must not be
+presented as results under the audited configuration. Review pauses are now
+explicitly opt-in, and the teacher's effective budget still needs documenting.
 
 ## Question
 
@@ -46,7 +56,7 @@ the loop: that would compare complete agent systems rather than model behavior
 inside this harness. The proxy transports model requests; the harness executes
 the declared tools in its sandbox. Do not enable extra proxy-side tools.
 
-## GPTMock versus CLIProxyAPI: decision still open
+## GPTMock versus CLIProxyAPI: CLIProxyAPI trial selected
 
 Both candidates can expose a local API while inference happens remotely. Account
 authentication is not evidence that the exact model or tool workflow works.
@@ -58,9 +68,11 @@ Verify the actual model identity and pin the chosen proxy revision.
 | [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) | Broader multi-provider gateway; Codex OAuth and OpenAI-compatible APIs. | Can we keep one explicit provider/model, disable fallback or rotation that obscures identity, and inspect transformations, retries and output-budget behavior? |
 
 Selection should depend on faithful tool/message transport and debuggability,
-not merely a successful chat response or a model name in a registry. We have not
-validated either candidate against this harness. CLIProxyAPI's handling of the
-requested budgets must be checked; do not assume it fixes GPTMock's limitation.
+not merely a successful chat response or a model name in a registry. CLIProxyAPI
+8.0.29 passed synthetic streaming, structured tools, tool-result/error and ADK
+summary checks. Its Codex route drops output ceilings, temperature and top-p;
+an 8-token request returned 122 completion tokens. It does not solve GPTMock's
+budget limitation. The full task loop and observability still need preparation.
 
 Before the full task, exercise a small synthetic request sequence:
 
@@ -144,7 +156,8 @@ adapter against the original Gemma model with the same harness and budget.
 
 ## Open decisions
 
-- GPTMock or CLIProxyAPI, and which pinned release/commit?
+- Continue with CLIProxyAPI 8.0.29 for the teacher, accepting its documented
+  parameter limitations, or choose another route for enforced output ceilings?
 - Which exact teacher model and reasoning effort are available to the account?
 - Matched-budget comparison or explicitly documented upper-bound demonstration?
 - Which trace viewer, and what is the minimum useful instrumentation?

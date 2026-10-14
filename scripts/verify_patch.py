@@ -45,7 +45,6 @@ async def main():
         tasks_path=DATA / "tasks.jsonl", snapshots_dir=DATA / "snapshots",
         results_dir=results, submission_dir=ROOT / "submission", models=ModelRegistry(),
         image="localhost/gemma-swebench-sandbox-local:2026-10-14",
-        verification_timeout_seconds=180,
     )
     manager = ContainerManager(ContainerConfig(image=config.image))
     try:

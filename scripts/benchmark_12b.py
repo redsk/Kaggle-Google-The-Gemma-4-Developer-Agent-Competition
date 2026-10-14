@@ -252,6 +252,8 @@ def main():
     prompt.add_argument("--prompt", default=None)
     prompt.add_argument("--prompt-file", type=Path)
     parser.add_argument("--start-server", action="store_true", help="Start the selected local server if needed; stop it on exit.")
+    parser.add_argument("--startup-timeout", type=float, default=1200,
+                        help="Server readiness timeout in seconds (1200, matching the organizer notebook).")
     parser.add_argument("--runs", type=int, default=3, help="Measured requests after a separate short warm-up (default: 3).")
     parser.add_argument("--max-tokens", type=int, default=1024, help="Output-token ceiling per benchmark request (default: 1024).")
     parser.add_argument("--context", type=int, default=32768, help="Ollama context; must match the running vLLM configuration (default: 32768).")
@@ -260,10 +262,12 @@ def main():
     parser.add_argument("--show-output", action="store_true", help="Print generated answers while streaming.")
     parser.add_argument("--reference-tps", type=float, default=35.48, help="Historical Ollama generation rate for reference (default: 35.48).")
     args = parser.parse_args()
-    if args.runs < 1 or not 2 <= args.max_tokens <= 4096 or args.context < args.max_tokens:
-        parser.error("Use --runs >= 1, 2 <= --max-tokens <= 4096, and context >= max-tokens.")
+    if args.runs < 1 or not 2 <= args.max_tokens <= args.context:
+        parser.error("Use --runs >= 1 and 2 <= --max-tokens <= context (the prompt must also fit).")
     if args.reference_tps <= 0 or args.temperature < 0:
         parser.error("Reference speed must be positive; temperature must be nonnegative.")
+    if args.startup_timeout <= 0:
+        parser.error("--startup-timeout must be positive.")
     text = args.prompt_file.read_text() if args.prompt_file else (args.prompt or DEFAULT_PROMPT)
     if not text.strip():
         parser.error("The prompt cannot be empty.")
@@ -292,7 +296,7 @@ def main():
             server = subprocess.Popen(["sh", str(ROOT / "scripts" / f"start_{args.engine}.sh")],
                                       cwd=ROOT, stdout=server_log, stderr=subprocess.STDOUT, start_new_session=True)
             print("Starting local server; startup is excluded from measured runs...", flush=True)
-            deadline = time.monotonic() + 180
+            deadline = time.monotonic() + args.startup_timeout
             while not ready(args.engine):
                 if server.poll() is not None or time.monotonic() > deadline:
                     raise RuntimeError(f"Server did not become ready. See {directory / 'server.log'}")

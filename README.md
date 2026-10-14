@@ -14,10 +14,17 @@ harness and learn from its observable actions: see [ideas.md](ideas.md).
   edits. No successful solution is claimed.
 - The supervised runner defaults to the first dataset entry. It imposes no custom
   turn/tool/time limit unless `--minutes` is supplied. The upstream 500-call
-  fallback still exists, and the monitor pauses before reaching it.
-- Thinking is enabled for agent experiments with a 4,096-token total response
-  ceiling. This vLLM-Metal version does **not** enforce a separate thinking budget.
-- Stronger-model access and a trace viewer are planned, not installed or validated.
+  fallback still exists. Monitoring reports alerts; automatic review pauses are opt-in.
+- The agent declares the maximum permitted output and thinking budgets: 32,768
+  tokens each, sharing a 32,768-token context with the input. The local vLLM client
+  lets the server use the remaining context for output; there is no custom global
+  output cap. Metal still **cannot enforce a separate thinking budget**.
+- Pytest/unittest are enabled, and command/verification limits use the official
+  harness defaults. See the [configuration audit](dev/challenge-configuration-audit.md).
+- CLIProxyAPI 8.0.29 is installed and authenticated locally. Synthetic checks
+  with GPT-6.1 Sol passed through ADK/LiteLLM, but this route ignores output-token
+  ceilings. See [setup and findings](dev/cliproxyapi.md). No teacher task has run;
+  the trace viewer and full runner integration are still pending.
 - Kaggle GPU jobs require explicit approval. The commands below are local.
 
 ## What belongs in Git
@@ -109,8 +116,9 @@ sh scripts/start_vllm.sh
 
 The launcher binds to `127.0.0.1:8000`, enables Gemma tool/reasoning parsers and
 configures a 32,768-token context. [dev/vllm-runtime.json](dev/vllm-runtime.json)
-records the tested package versions and known limitations; it is an environment
-snapshot, not a complete lockfile for the separate runtime.
+records package versions, current configuration and known limitations. The
+audited launcher settings have passed offline checks but have not yet been run
+with a loaded model. This is not a complete lockfile for the separate runtime.
 
 The official evaluation uses Google's QAT W4A16 compressed-tensors checkpoint on
 CUDA. Our MLX conversion and Ollama's NVFP4 artifact differ from it and from each
@@ -121,6 +129,9 @@ other. Local speed comparisons include those differences.
 With the assets, container engine and local model server ready:
 
 ```sh
+# Inspect configuration without inference or containers.
+.venv/bin/python scripts/run_supervised.py --print-config
+
 # No model calls: verify the unpatched task in the local sandbox.
 .venv/bin/python scripts/run_supervised.py --baseline
 
@@ -131,10 +142,12 @@ With the assets, container engine and local model server ready:
 .venv/bin/python scripts/verify_patch.py results/YOUR_RUN/agent.patch
 ```
 
-Results, full local traces and progress events go under `results/`. The runner
-pauses at model-call boundaries when repeated failures, repeated calls or missing
-edits merit review. Inspect its `pause.json` and traces before removing the pause
-file to resume. Optional human guidance is recorded separately.
+Results, full local traces and progress events go under `results/`, including
+`effective-config.json` and `request-budget.jsonl`. Repeated failures, calls or
+missing edits produce alerts without stopping the agent. `--pause-on-alert`
+explicitly opts into automatic review pauses. Creating `pause.json` manually
+still pauses at the next model-call boundary; remove it after review to resume.
+Optional human guidance is recorded separately.
 
 `check_reference_patch.py` is a separate fixture check for the published reference
 patch. Its data must stay outside the agent's view and outside Git.
@@ -153,6 +166,8 @@ requires reporting that route and replacing the current vLLM-specific run labels
   hardware sensors; it does not change fan settings.
 - `scripts/check_vllm.py` and `scripts/diagnose_vllm_budget.py`: tool-call/output
   limit checks and a diagnostic for the unsupported thinking budget.
+- Offline checks against the downloaded official assets:
+  `.venv/bin/python -m unittest discover -s tests -p 'test_challenge_configuration.py'`.
 - Ollama scripts expect its app binary under
   `downloads/tools/Ollama.app/Contents/Resources/ollama`. Pull `gemma4:12b` using
   that local server and create the chat alias from

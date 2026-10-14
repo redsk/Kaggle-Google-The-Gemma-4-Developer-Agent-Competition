@@ -14,21 +14,34 @@
   "revision": "e70c6b3ba0979b3357dcd2f223ad8bde7787a6b6",
   "endpoint": "http://127.0.0.1:8000/v1",
   "context_length": 32768,
-  "gpu_memory_utilization": 0.35,
-  "max_num_seqs": 1,
-  "max_num_batched_tokens": 2048,
+  "gpu_memory_utilization": 0.9,
+  "max_num_seqs": null,
+  "max_num_batched_tokens": null,
   "tool_call_parser": "gemma4",
   "reasoning_parser": "gemma4",
   "thinking_token_budget_enforced": false,
   "preflight_report": "results/vllm-preflight.json",
   "thinking_budget_investigation": "results/vllm-budget-investigation.json",
   "local_run_policy": {
+    "policy": "maximum_competition_generation_settings",
     "thinking_enabled": true,
-    "max_completion_tokens": 4096,
+    "declared_max_output_tokens": 32768,
+    "requested_thinking_budget": 32768,
     "separate_thinking_budget_enforced": false,
     "upstream_runtime_modified": false,
-    "user_choice": "Keep upstream unchanged and run with thinking enabled, using only the 4,096-token total response limit.",
-    "summary_output_limit": "server-wide max_new_tokens=4096"
+    "user_choice": "Maximum permitted settings",
+    "output_budget_mode": "server_remaining_context",
+    "output_budget_explanation": "The local client omits a full-window output request so vLLM computes 32768 minus formatted prompt tokens. Smaller explicit requests are preserved.",
+    "summary_output_limit": "No custom output ceiling; server uses remaining context."
   },
-  "server_max_output_tokens": 4096
+  "server_max_output_tokens": null,
+  "scheduler_reserve_full_isl": false,
+  "generation_config": "auto",
+  "configuration_audit": {
+    "date": "2026-10-14",
+    "source": "Official wheelhouse version 31, swegemma/config.py build_submission_limits; organizer notebook and HARNESS_README.md",
+    "report": "dev/challenge-configuration-audit.md",
+    "scheduling_note": "null max_num_seqs/max_num_batched_tokens means upstream defaults, not verified effective runtime values.",
+    "validation": "Offline configuration/client tests; live inference and new memory allocation settings not exercised after this change."
+  }
 }

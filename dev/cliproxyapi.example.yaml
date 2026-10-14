@@ -1,0 +1,39 @@
+# scripts/cliproxy.py setup fills these placeholders into an ignored private file.
+config-version: 8
+server:
+  host: "127.0.0.1"
+  port: 8317
+  discovery:
+    enabled: false
+management:
+  allow-remote: false
+  secret-key: ""
+  disable-control-panel: true
+  disable-auto-update-panel: true
+access:
+  api-keys:
+    - __LOCAL_API_KEY__
+oauth:
+  auth-dir: __AUTH_DIR__
+routing:
+  strategy: "fill-first"
+  retry:
+    request-retry: 0
+    max-retry-credentials: 1
+    max-retry-interval: 0
+requests:
+  streaming:
+    bootstrap-retries: 0
+multimedia:
+  disable-image-generation: true
+observability:
+  logs:
+    debug: false
+    logging-to-file: false
+    request-log: false
+  usage:
+    usage-statistics-enabled: false
+  pprof:
+    enable: false
+plugins:
+  enabled: false
