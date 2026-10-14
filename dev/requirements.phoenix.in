@@ -1,0 +1,2 @@
+# Phoenix server only. Keep outside the competition and model environments.
+arize-phoenix==20.21.4

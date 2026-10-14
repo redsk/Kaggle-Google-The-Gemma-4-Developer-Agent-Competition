@@ -1,4 +1,4 @@
-"""Single-task local vLLM runner with live monitoring and a resumable pause gate.
+"""Single-task runner for local vLLM or remote models through local CLIProxyAPI.
 
 Create pause.json in the result directory to pause before the next model call.
 Remove it only after the user approves resuming. Optional user-approved guidance
@@ -11,11 +11,13 @@ from collections import Counter, defaultdict, deque
 import contextlib
 from datetime import datetime, timezone
 import hashlib
+import importlib.metadata
 import json
 import os
 from pathlib import Path
 import re
 import sys
+import time
 from urllib.parse import urlparse
 
 import yaml
@@ -31,13 +33,16 @@ def save_json(path, value):
 
 
 class Monitor:
-    def __init__(self, directory, ctx, *, pause_on_alert=False):
+    def __init__(self, directory, ctx, *, pause_on_alert=False, telemetry=None):
         self.directory, self.ctx = directory, ctx
+        self.telemetry = telemetry
         self.pause_on_alert = pause_on_alert
         self.pending = defaultdict(deque)
         self.failures, self.repeats = Counter(), Counter()
         self.calls = self.tools = self.nudges = self.last_progress = self.changed_files = 0
         self.diff_hash = None
+        self.started = time.perf_counter()
+        self.first_edit_seconds = None
         self.paused = False
 
     def emit(self, event, **fields):
@@ -45,6 +50,8 @@ class Monitor:
         line = json.dumps(record, default=str)
         with (self.directory / "progress.jsonl").open("a") as output:
             output.write(line + "\n")
+        if self.telemetry:
+            self.telemetry.record("progress." + event, **fields)
         print(line, file=sys.__stdout__, flush=True)
 
     def pause(self, reason):
@@ -61,8 +68,11 @@ class Monitor:
             self.pause(reason)
 
     def on_entry(self, entry):
+        if self.telemetry:
+            self.telemetry.record("harness.event", entry=entry.to_dict())
         with (self.directory / "live_trace.jsonl").open("a") as output:
-            output.write(json.dumps(entry.to_dict(), default=str) + "\n")
+            value = self.telemetry.clean(entry.to_dict()) if self.telemetry else entry.to_dict()
+            output.write(json.dumps(value, default=str) + "\n")
         if entry.event_type == "tool_call":
             fingerprint = hashlib.sha256(json.dumps(
                 [entry.tool_name, entry.tool_args], sort_keys=True, default=str
@@ -113,11 +123,20 @@ class Monitor:
         (self.directory / "workspace-status.txt").write_text(status.stdout)
         (self.directory / "workspace.diff").write_text(diff.stdout)
         self.changed_files = len(status.stdout.splitlines())
+        if self.changed_files and self.first_edit_seconds is None:
+            self.first_edit_seconds = time.perf_counter() - self.started
+            self.emit("first_edit", seconds=self.first_edit_seconds, tools=self.tools, model_calls=self.calls)
+            if self.telemetry:
+                self.telemetry.root.set_attribute("gemma.first_edit_seconds", self.first_edit_seconds)
         digest = hashlib.sha256((status.stdout + diff.stdout).encode()).hexdigest()
         if digest != self.diff_hash:
             self.diff_hash = digest
             self.last_progress = self.tools
             self.repeats.clear()
+            snapshots = self.directory / "workspace-snapshots"
+            snapshots.mkdir(exist_ok=True)
+            (snapshots / f"{self.calls:04d}-{digest[:12]}.diff").write_text(diff.stdout)
+            (snapshots / f"{self.calls:04d}-{digest[:12]}.status").write_text(status.stdout)
             self.emit("workspace", changed_files=self.changed_files, patch_bytes=len(diff.stdout.encode()))
         if self.tools - self.last_progress >= 12 and not self.changed_files:
             self.alert("Twelve tool calls with no workspace edits.")
@@ -152,10 +171,34 @@ class Monitor:
         self.emit("model_request", number=self.calls, changed_files=self.changed_files)
 
     async def heartbeat(self):
+        power = None
+        if self.telemetry and sys.platform == "darwin":
+            try:
+                from monitor_local_inference import PowerState, snapshot
+                power = PowerState()
+            except Exception as error:
+                self.telemetry.record("machine.sample_error", error_type=type(error).__name__)
         while True:
+            if power:
+                try:
+                    sample = await asyncio.to_thread(snapshot, power)
+                    self.telemetry.record("machine.sample", sample=sample)
+                except Exception as error:
+                    self.telemetry.record("machine.sample_error", error_type=type(error).__name__)
             await asyncio.sleep(30)
             self.emit("heartbeat", phase=self.ctx.current_phase, model_calls=self.calls,
                       tools=self.tools, changed_files=self.changed_files, paused=self.paused)
+
+
+def model_mapping(args):
+    mapping = yaml.safe_load(args.models_yaml.read_text())
+    if getattr(args, "backend", "vllm") == "cliproxy":
+        from cliproxy import client_settings
+        endpoint, key = client_settings()
+        return {"models": {alias: {"path": "openai/" + args.remote_model, "api_base": endpoint,
+                "api_key": key, "reasoning_effort": args.reasoning_effort}
+                for alias in mapping["models"]}}
+    return mapping
 
 
 def build_eval_config(args, directory):
@@ -179,7 +222,13 @@ def build_eval_config(args, directory):
         display_mode="quiet", skip_agent_patch=args.baseline,
     )
     from vllm_client import VllmRemainingContextClient
-    mapping = yaml.safe_load(args.models_yaml.read_text())
+    mapping = model_mapping(args)
+    if getattr(args, "backend", "vllm") == "cliproxy":
+        from google.adk.models.lite_llm import LiteLlm
+        for alias, entry in mapping["models"].items():
+            config.models.register(alias, LiteLlm(model=entry["path"], api_base=entry["api_base"],
+                                   api_key=entry["api_key"], reasoning_effort=entry["reasoning_effort"],
+                                   num_retries=5))
     for alias, entry in mapping["models"].items():
         if entry.get("use_remaining_context_budget"):
             config.models.get(alias).llm_client = VllmRemainingContextClient(
@@ -199,7 +248,7 @@ def describe_config(config, args):
         "generation_constraints": asdict(config.generation_constraints),
         "model_output_budget_modes": {
             alias: "server_remaining_context" if entry.get("use_remaining_context_budget") else "client_request"
-            for alias, entry in yaml.safe_load(args.models_yaml.read_text())["models"].items()
+            for alias, entry in model_mapping(args)["models"].items()
         },
         "context_cache_config": config.context_cache_config.model_dump(mode="json"),
         "events_compaction_config": config.events_compaction_config.model_dump(mode="json"),
@@ -232,7 +281,7 @@ def validate_server_contexts(mapping, expected_context):
     return checked
 
 
-async def evaluate(args, directory):
+async def evaluate(args, directory, telemetry=None):
     from adk_eval_core.tracing import SessionTrace
     from swegemma.context import SwegemmaContext
     from swegemma.evaluate import Evaluator
@@ -247,7 +296,7 @@ async def evaluate(args, directory):
     ctx = SwegemmaContext(docker_manager=evaluator.sandbox, task=task, repo=task.repo,
                          budget=config.budget, harness=config.harness,
                          graph_dir=config.graph_dir, embeddings_dir=config.embeddings_dir)
-    monitor = Monitor(directory, ctx, pause_on_alert=args.pause_on_alert)
+    monitor = Monitor(directory, ctx, pause_on_alert=args.pause_on_alert, telemetry=telemetry)
     original_trace, original_plugin = runner.SessionTrace, runner.EventDisplayPlugin
 
     class LiveTrace(SessionTrace):
@@ -277,6 +326,10 @@ async def evaluate(args, directory):
                    "patch_bytes": len(result.agent_patch.encode()),
                    "test_counts": re.findall(r"\b\d+ (?:passed|failed|errors?|skipped|xfailed)\b", result.test_output)}
         save_json(directory / "summary.json", summary)
+        if telemetry:
+            telemetry.record("task.result", summary=summary)
+            telemetry.root.set_attribute("gemma.task.resolved", result.resolved)
+            telemetry.root.set_attribute("gemma.task.test_exit_code", result.test_exit_code)
         monitor.emit("completed", **summary)
         return 1 if result.error else 0
     except asyncio.CancelledError:
@@ -305,10 +358,18 @@ def main():
     parser.add_argument("--print-config", action="store_true",
                         help="Print effective harness settings and exit without inference or containers")
     parser.add_argument("--models-yaml", type=Path, default=ROOT / "dev/models.vllm.yaml")
+    parser.add_argument("--backend", choices=("vllm", "cliproxy"), default="vllm")
+    parser.add_argument("--remote-model", help="Explicit CLIProxyAPI model ID; no default teacher")
+    parser.add_argument("--reasoning-effort", help="Explicit remote reasoning setting; recorded without claiming Gemma equivalence")
+    parser.add_argument("--no-phoenix", action="store_true", help="Keep durable local traces but skip Phoenix export")
     args = parser.parse_args()
     if args.minutes is not None and args.minutes <= 0:
         parser.error("--minutes must be positive when explicitly provided")
-    mapping = yaml.safe_load(args.models_yaml.read_text())
+    if args.backend == "cliproxy" and not (args.remote_model and args.reasoning_effort):
+        parser.error("CLIProxyAPI requires --remote-model and --reasoning-effort")
+    if args.backend != "cliproxy" and (args.remote_model or args.reasoning_effort):
+        parser.error("Remote model settings require --backend cliproxy")
+    mapping = model_mapping(args)
     declared = yaml.safe_load((ROOT / "submission/agent.yaml").read_text())["model"]
     if declared not in mapping["models"]:
         parser.error("The submission model must have an explicit local endpoint mapping")
@@ -319,7 +380,8 @@ def main():
     os.environ.update({"KAGGLE_SANDBOX_DIR": str(DATA / "sandbox"),
                        "LITELLM_LOCAL_MODEL_COST_MAP": "True", "LITELLM_TELEMETRY": "False",
                        "OTEL_SDK_DISABLED": "true", "HF_HUB_OFFLINE": "1",
-                       "MODEL_PROXY_URL": endpoint, "MODEL_PROXY_API_KEY": "local-only"})
+                       "MODEL_PROXY_URL": endpoint,
+                       "MODEL_PROXY_API_KEY": mapping["models"][declared].get("api_key", "local-only")})
     if args.print_config:
         config = build_eval_config(args, ROOT / "results/config-inspection")
         print(json.dumps(describe_config(config, args), indent=2))
@@ -330,11 +392,34 @@ def main():
         _, constraints = build_submission_limits()
         context_checks = validate_server_contexts(mapping, constraints.max_output_tokens.max)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-    directory = ROOT / "results" / (stamp + ("-unpatched" if args.baseline else "-vllm-metal-12b"))
-    directory.mkdir(parents=True)
-    for path in (ROOT / "submission/agent.yaml", args.models_yaml, ROOT / "dev/vllm-runtime.json"):
+    directory = ROOT / "results" / (stamp + ("-unpatched" if args.baseline else "-" + args.backend))
+    os.umask(0o077)
+    directory.mkdir(parents=True, mode=0o700)
+    runtime = ROOT / "dev" / ("cliproxyapi-runtime.json" if args.backend == "cliproxy" else "vllm-runtime.json")
+    for path in (ROOT / "submission/agent.yaml", runtime):
         (directory / path.name).write_text(path.read_text())
-    save_json(directory / "run.json", {"runtime": "local-vllm-metal-arm64", "arguments": vars(args),
+    from observability import Telemetry, instrument, DEFAULT_ENDPOINT
+    from swegemma.models import load_tasks
+    tasks = load_tasks(DATA / "tasks.jsonl")
+    task = next(t for t in tasks if t.instance_id == args.task_id) if args.task_id else tasks[0]
+    selected = mapping["models"][declared]
+    metadata = {"task_id": task.instance_id, "backend": args.backend,
+                "model": selected["path"], "reasoning_effort": args.reasoning_effort,
+                "repo_base_revision": getattr(task, "base_commit", None),
+                "harness_packages": {p: importlib.metadata.version(p) for p in
+                    ("swegemma", "adk-submission", "adk-eval-core", "google-adk", "litellm", "opentelemetry-sdk")},
+                "script_sha256": {name: hashlib.sha256((ROOT / "scripts" / name).read_bytes()).hexdigest()
+                    for name in ("run_supervised.py", "observability.py", "vllm_client.py")},
+                "dataset_sha256": hashlib.sha256((DATA / "tasks.jsonl").read_bytes()).hexdigest(),
+                "agent_sha256": hashlib.sha256((ROOT / "submission/agent.yaml").read_bytes()).hexdigest(),
+                "runtime_manifest": json.loads(runtime.read_text()),
+                "budget_comparison": "proxy ignores output ceilings, temperature and top_p" if args.backend == "cliproxy" else "Metal ignores separate thinking budget"}
+    telemetry = Telemetry(directory, metadata=metadata,
+                          endpoints=[entry["api_base"] for entry in mapping["models"].values()],
+                          secrets=[entry.get("api_key", "") for entry in mapping["models"].values()],
+                          endpoint=None if args.no_phoenix else DEFAULT_ENDPOINT)
+    save_json(directory / "models.redacted.json", telemetry.clean(mapping))
+    save_json(directory / "run.json", {"runtime": args.backend, "arguments": vars(args), **metadata,
                                       "budget": {"time_minutes": args.minutes, "turns": None, "tool_calls": None},
                                       "upstream_call_fallback": 500,
                                       "server_context_checks": context_checks,
@@ -343,7 +428,8 @@ def main():
     with (directory / "harness.log").open("w") as log:
         with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
             try:
-                return asyncio.run(evaluate(args, directory))
+                with telemetry.run(), instrument():
+                    return asyncio.run(evaluate(args, directory, telemetry))
             except KeyboardInterrupt:
                 return 130
 

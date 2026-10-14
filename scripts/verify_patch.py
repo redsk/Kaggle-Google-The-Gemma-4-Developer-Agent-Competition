@@ -23,7 +23,7 @@ os.environ.update({
 
 from adk_submission import ModelRegistry
 from swegemma.config import EvalConfig
-from swegemma.harness.verification import verify_task
+import importlib
 from swegemma.models import load_tasks
 from swegemma.sandbox import ContainerConfig, ContainerManager
 
@@ -33,25 +33,33 @@ async def main():
     parser.add_argument("patch", type=Path)
     parser.add_argument("--task-id")
     args = parser.parse_args()
-    task_id = args.task_id or json.loads((DATA / "smoke_manifest.json").read_text())["task_id"]
-    task = next(t for t in load_tasks(DATA / "tasks.jsonl") if t.instance_id == task_id)
+    tasks = load_tasks(DATA / "tasks.jsonl")
+    run_file = args.patch.parent / "summary.json"
+    recorded_task = json.loads(run_file.read_text()).get("task_id") if run_file.exists() else None
+    task_id = args.task_id or recorded_task or tasks[0].instance_id
+    task = next(t for t in tasks if t.instance_id == task_id)
     patch = args.patch.read_text()
     if not patch.strip():
         raise ValueError("The patch file is empty.")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     results = ROOT / "results" / f"{stamp}-saved-patch-verification"
-    results.mkdir(parents=True)
+    os.umask(0o077)
+    results.mkdir(parents=True, mode=0o700)
     config = EvalConfig(
         tasks_path=DATA / "tasks.jsonl", snapshots_dir=DATA / "snapshots",
         results_dir=results, submission_dir=ROOT / "submission", models=ModelRegistry(),
         image="localhost/gemma-swebench-sandbox-local:2026-10-14",
     )
     manager = ContainerManager(ContainerConfig(image=config.image))
+    from observability import Telemetry, instrument
+    telemetry = Telemetry(results, metadata={"task_id": task_id, "source_run": args.patch.parent.name,
+                          "scope": "saved patch verification; no model calls"})
     try:
-        result = await verify_task(
-            manager, config, task, DATA / "snapshots" / f"{task.instance_id}.tgz",
-            agent_patch=patch, start_time=time.perf_counter(),
-        )
+        with telemetry.run("verification.saved"), instrument():
+            result = await importlib.import_module("swegemma.evaluate").verify_task(
+                manager, config, task, DATA / "snapshots" / f"{task.instance_id}.tgz",
+                agent_patch=patch, start_time=time.perf_counter(),
+            )
     finally:
         manager.close()
     counts = re.findall(r"\b\d+ (?:passed|failed|errors?|skipped|xfailed|xpassed)\b", result.test_output)

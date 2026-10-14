@@ -23,8 +23,10 @@ harness and learn from its observable actions: see [ideas.md](ideas.md).
   harness defaults. See the [configuration audit](dev/challenge-configuration-audit.md).
 - CLIProxyAPI 8.0.29 is installed and authenticated locally. Synthetic checks
   with GPT-6.1 Sol passed through ADK/LiteLLM, but this route ignores output-token
-  ceilings. See [setup and findings](dev/cliproxyapi.md). No teacher task has run;
-  the trace viewer and full runner integration are still pending.
+  ceilings. See [setup and findings](dev/cliproxyapi.md). No teacher task has run.
+- Phoenix 20.21.4 is installed locally. The shared runner records both model
+  paths, tools, summaries and verification. Scripted and live remote tracing
+  preflights passed; full task runs remain untested. See [observability](dev/phoenix.md).
 - Kaggle GPU jobs require explicit approval. The commands below are local.
 
 ## What belongs in Git
@@ -152,9 +154,10 @@ Optional human guidance is recorded separately.
 `check_reference_patch.py` is a separate fixture check for the published reference
 patch. Its data must stay outside the agent's view and outside Git.
 
-The current runner's endpoint guard accepts localhost URLs; a local proxy can
-still forward requests to a remote provider. The stronger-model plan explicitly
-requires reporting that route and replacing the current vLLM-specific run labels.
+The runner's endpoint guard accepts localhost URLs. `--backend cliproxy` forwards
+inference remotely and requires an explicit `--remote-model` and
+`--reasoning-effort`; manifests and trace metadata label that route. See the
+[Phoenix guide](dev/phoenix.md) for both paths and the remaining budget differences.
 
 ## Other utilities and notes
 

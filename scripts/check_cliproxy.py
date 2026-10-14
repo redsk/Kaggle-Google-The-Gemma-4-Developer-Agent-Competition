@@ -35,6 +35,16 @@ async def run(args):
     if args.model not in {m["id"] for m in catalog.get("data", [])}:
         raise SystemExit(f"{args.model!r} is not in the proxy's advertised catalog.")
     (output / "models.json").write_text(json.dumps(catalog, indent=2))
+    from observability import Telemetry, instrument
+    telemetry = Telemetry(output, endpoints=[endpoint], secrets=[key],
+                          project="gemma-observability-preflight", metadata={
+                              "backend": "cliproxy", "model": args.model,
+                              "reasoning_effort": args.reasoning, "scope": "synthetic remote transport check"})
+    with telemetry.run("cliproxy.synthetic"), instrument():
+        return await checks(args, output, endpoint, key)
+
+
+async def checks(args, output, endpoint, key):
     manifest = {
         "proxy": MANIFEST, "model_requested": args.model,
         "reasoning_effort": args.reasoning, "api_base": endpoint,

@@ -1,0 +1,19 @@
+#!/bin/sh
+set -eu
+PROJECT_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+umask 077
+export PHOENIX_WORKING_DIR="$PROJECT_ROOT/.cache/phoenix"
+export PHOENIX_HOST=127.0.0.1
+export PHOENIX_PORT=6006
+export PHOENIX_GRPC_PORT=4317
+export PHOENIX_TELEMETRY_ENABLED=false
+export PHOENIX_ENABLE_PROMETHEUS=false
+export PHOENIX_DISABLE_AGENT_ASSISTANT=true
+export PHOENIX_ENABLE_MCP_SERVER=false
+export PHOENIX_AGENTS_DISABLE_WEB_ACCESS=true
+export PHOENIX_AGENTS_DISABLE_BASH=true
+export PHOENIX_AGENTS_DISABLE_GITHUB=true
+export PHOENIX_ALLOWED_SANDBOX_PROVIDERS=NONE
+export PHOENIX_DEFAULT_RETENTION_POLICY_DAYS=0
+mkdir -p "$PHOENIX_WORKING_DIR"
+exec "$PROJECT_ROOT/.venv-phoenix/bin/python" "$PROJECT_ROOT/scripts/phoenix_http.py" serve --no-internet "$@"

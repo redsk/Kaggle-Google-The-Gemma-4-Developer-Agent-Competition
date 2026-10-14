@@ -3,7 +3,8 @@
 Status: CLIProxyAPI selected for the first trial. Release 8.0.29 is installed and
 authenticated; five synthetic ADK/LiteLLM checks with GPT-6.1 Sol passed, and an
 output-limit probe confirmed that this route does not enforce the requested
-ceiling. The task model, budget policy and observability backend remain open.
+ceiling. Phoenix is selected and installed; shared tracing has passed scripted
+and remote transport checks. The task model and budget policy remain open.
 No teacher task, fine-tuning job or new Kaggle GPU run has been started. Notes
 reflect the project state on 2026-10-14; see [proxy trial](dev/cliproxyapi.md).
 
@@ -112,13 +113,10 @@ Separate the verifier trace from agent-visible history. Redact credentials from
 all exports; keep competition-derived content and raw traces out of the public
 GitHub repository.
 
-Phoenix is a candidate, not a settled decision. Discuss it alongside Langfuse,
-LangSmith, Weave and Braintrust: tool-call visibility, side-by-side comparisons,
-ADK compatibility, local hosting, evaluation support and setup effort matter more
-than a dashboard screenshot. The current runner disables OpenTelemetry, so a
-viewer requires deliberate instrumentation/configuration changes and validation.
-An HTTP proxy log alone cannot show sandbox actions, patch verification or the
-whole agent loop.
+Phoenix is selected and running locally with SQLite. A scoped OpenTelemetry
+provider captures model, transport, tool, summary and verification operations
+without upgrading the pinned harness. Durable JSONL artifacts remain independent
+of the viewer. See [setup, validated boundaries and limitations](dev/phoenix.md).
 
 ## Execution and review
 
@@ -160,7 +158,7 @@ adapter against the original Gemma model with the same harness and budget.
   parameter limitations, or choose another route for enforced output ceilings?
 - Which exact teacher model and reasoning effort are available to the account?
 - Matched-budget comparison or explicitly documented upper-bound demonstration?
-- Which trace viewer, and what is the minimum useful instrumentation?
+- How should we annotate and compare completed task traces in Phoenix?
 - After the first case study, which held-out tasks will test whether changes help?
 
 Competition GPU use remains a separate, explicitly approved action.

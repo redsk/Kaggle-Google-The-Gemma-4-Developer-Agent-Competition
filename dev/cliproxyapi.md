@@ -101,8 +101,11 @@ of maximum permitted budgets: local Gemma can use the remaining part of its
 does not establish equal effective context/output budgets. A prompt asking for
 brevity is not a hard limit. Document that mismatch before a teacher task run.
 
-Next: choose the teacher/reasoning policy and observability backend, then make
-the supervised runner's metadata and authentication provider-neutral. Do not
-point its current vLLM-specific configuration at this proxy and assume all
-runtime settings, context accounting and trace labels remain correct. See
+Phoenix is now installed, and the runner has an explicit `--backend cliproxy`
+path with provider-specific authentication and metadata. The five synthetic
+checks were repeated with tracing; all five model calls and both HTTP routes
+were captured. See [observability setup](phoenix.md).
+
+Next: choose the teacher model, reasoning effort and comparison policy before
+running the first task. The proxy's budget limitations remain unchanged. See
 [ideas.md](../ideas.md) for the experiment protocol.
